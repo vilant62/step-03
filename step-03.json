@@ -1,0 +1,226 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "type": "string",
+            "defaultvalue": "[resourceGroup().location]"
+        },
+        "vmSize": {
+            "type": "string",
+            "defaultValue": "Standard_B1s"
+        },
+        "NetworkPrefix": {
+            "type": "string",
+            "defaultvalue": "10.10.0.0/16"
+        },
+        "VName": {
+            "type": "string"
+        },
+        "Adminusername": {
+            "type": "string",
+            "defaultvalue": "vilant"
+        },
+        "adminPassword": {
+            "type": "securestring"
+        }
+    },
+    "variables": {
+        "vnetName": "[concat(resourceGroup().name, '-vnet')]",
+        "subnetname": "[concat(variables('vnetName'), '-subnet-01')]",
+        "pubIPName": "[concat(resourceGroup().name, '-pubip')]",
+        "domainNameLabel": "[concat(parameters('VName'), uniqueString(resourceGroup().id))]",
+        "nsgName": "[concat(resourceGroup().name, '-nsg')]",
+        "nicName": "[concat(resourceGroup().name, '-nic-', uniqueString(resourceGroup().id))]",
+        "nicId": "[resourceId('Microsoft.Network/networkInterfaces/', variables('nicName'))]",
+        "OSDiskName": "[concat(resourceGroup().name, '-', parameters('VName'), '-OSDisk-', uniqueString(resourceGroup().id))]",
+        "dataDiskName": "[concat(resourceGroup().name, '-', parameters('VName'), '-DataDisk-', uniqueString(resourceGroup().id))]",
+        "ScriptURL": "zdes poka zaglushka"
+    },
+    "resources": [
+        {
+            "apiVersion": "2015-06-15",
+            "type": "Microsoft.Network/virtualNetworks",
+            "name": "[variables('vnetName')]",
+            "location": "[parameters('location')]",
+            "tags": {
+                "displayName": "[variables('vnetName')]"
+            },
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[parameters('NetworkPrefix')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('subnetname')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('NetworkPrefix')]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2015-06-15",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "name": "[variables('pubIPName')]",
+            "location": "[parameters('location')]",
+            "tags": {
+                "displayName": "[variables('pubIPName')]"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[variables('domainNameLabel')]"
+                }
+            }
+        },
+        {
+            "apiVersion": "2017-06-01",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "name": "[variables('nsgName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "allowHTTP",
+                        "properties": {
+                            "description": "Allow HTTP connections",
+                            "protocol": "tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "80",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 101,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "allowRDP",
+                        "properties": {
+                            "description": "Allow rdp connections",
+                            "protocol": "tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "3389",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 102,
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2015-06-15",
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "[variables('nicName')]",
+            "location": "[parameters('location')]",
+            "tags": {
+                "displayName": "[variables('nicName')]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks/', variables('vnetName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups/', variables('nsgName'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses/', variables('pubIPName'))]"
+            ],
+            "properties": {
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups/', variables('nsgName'))]"
+                },
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), '/subnets/', variables('subnetname'))]"
+                            },
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses/', variables('pubIPName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2018-06-01",
+            "name": "[parameters('VName')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[variables('nicId')]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                    "computerName": "[parameters('VName')]",
+                    "adminUsername": "[parameters('Adminusername')]",
+                    "adminPassword": "[parameters('AdminPassword')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "MicrosoftWindowsServer",
+                        "offer": "WindowsServer",
+                        "sku": "2012-R2-Datacenter",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "name": "[variables('OSDiskName')]",
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage"
+                    },
+                    "dataDisks": [
+                        {
+                            "lun": 0,
+                            "name": "[variables('dataDiskName')]",
+                            "createOption": "Empty",
+                            "diskSizeGB": 20
+                        }
+                    ]
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[variables('nicId')]"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines/extensions",
+            "name": "IISstart",
+            "apiVersion": "2015-06-15",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "",
+            ],
+            "properties": {
+                "publisher": "Microsoft.Compute",
+                "type": "CustomScriptExtension",
+                "typeHandlerVersion": "1.4",
+                "autoUpgradeMinorVersion": true,
+                "settings": {
+                    "fileUris": [
+                        "[variables('ScriptURL')]"
+                    ],
+                    "commandToExecute": "powershell -ExecutionPolicy Bypass -file ScriptName.ps1"
+                }
+            }
+        }
+    ],
+    "outputs": {
+        "ServerName": {
+            "type": "string",
+            "value": "[reference(variables('pubIPName')).dnsSettings.fqdn]"
+        }
+    }
+}
